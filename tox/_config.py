@@ -12,6 +12,7 @@ import py
 
 import tox
 
+
 defaultenvs = {'jython': 'jython', 'pypy': 'pypy'}
 for _name in "py,py24,py25,py26,py27,py30,py31,py32,py33,py34".split(","):
     if _name == "py":
@@ -77,6 +78,8 @@ def prepare_parse(pkgname):
         help="increase verbosity of reporting output.")
     parser.add_argument("--showconfig", action="store_true", dest="showconfig",
         help="show configuration information. ")
+    parser.add_argument("-l", "--listenvs", action="store_true",
+        dest="listenvs", help="show list of test environments")
     parser.add_argument("-c", action="store", default="tox.ini",
         dest="configfile",
         help="use the specified config file name.")
@@ -87,6 +90,8 @@ def prepare_parse(pkgname):
         help="skip invoking test commands.")
     parser.add_argument("--sdistonly", action="store_true", dest="sdistonly",
         help="only perform the sdist packaging activity.")
+    parser.add_argument("--installpkg", action="store", default=None,
+        help="use specified package for installation into venv")
     parser.add_argument('-i', action="append",
         dest="indexurl", metavar="URL",
         help="set indexserver url (if URL is of form name=url set the "
@@ -109,7 +114,8 @@ class VenvConfig:
 
     @property
     def envbindir(self):
-        if sys.platform == "win32" and "jython" not in self.basepython:
+        if (sys.platform == "win32" and "jython" not in self.basepython
+                                    and "pypy" not in self.basepython):
             return self.envdir.join("Scripts")
         else:
             return self.envdir.join("bin")
@@ -122,7 +128,7 @@ class VenvConfig:
             name = "python"
         return self.envbindir.join(name)
 
-    @property
+    # no @property to avoid early calling (see callable(subst[key]) checks)
     def envsitepackagesdir(self):
         print_envsitepackagesdir = textwrap.dedent("""
         import sys
@@ -197,9 +203,10 @@ class parseini:
             name, url = map(lambda x: x.strip(), line.split("=", 1))
             config.indexserver[name] = IndexServerConfig(name, url)
 
+        override = False
         if config.option.indexurl:
             for urldef in config.option.indexurl:
-                m = re.match(r"(\w+)=(\S+)", urldef)
+                m = re.match(r"\W*(\w+)=(\S+)", urldef)
                 if m is None:
                     url = urldef
                     name = "default"
@@ -207,7 +214,14 @@ class parseini:
                     name, url = m.groups()
                     if not url:
                         url = None
-                config.indexserver[name].url = url
+                if name != "ALL":
+                    config.indexserver[name].url = url
+                else:
+                    override = url
+        # let ALL override all existing entries
+        if override:
+            for name in config.indexserver:
+                config.indexserver[name] = IndexServerConfig(name, override)
 
         reader.addsubstitions(toxworkdir=config.toxworkdir)
         config.distdir = reader.getpath(toxsection, "distdir",
@@ -289,12 +303,12 @@ class parseini:
             vc.deps.append(DepConfig(name, ixserver))
         vc.distribute = reader.getbool(section, "distribute", True)
         vc.sitepackages = reader.getbool(section, "sitepackages", False)
-        downloadcache = reader.getdefault(section, "downloadcache")
-        if downloadcache is None:
-            downloadcache = os.environ.get("PIP_DOWNLOAD_CACHE", "")
-            if not downloadcache:
-                downloadcache = self.config.toxworkdir.join("_download")
-        vc.downloadcache = py.path.local(downloadcache)
+        vc.downloadcache = None
+        downloadcache = os.environ.get("PIP_DOWNLOAD_CACHE", None)
+        if not downloadcache:
+            downloadcache = reader.getdefault(section, "downloadcache")
+        if downloadcache:
+            vc.downloadcache = py.path.local(downloadcache)
         return vc
 
     def _getenvlist(self, reader, toxsection):
@@ -459,7 +473,8 @@ class IniReader:
                     "substitution %r: %r not found in environment" %
                     (key, envkey))
             return os.environ[envkey]
-        if key not in self._subs:
+        val = self._subs.get(key, None)
+        if val is None:
             if key.startswith("[") and "]" in key:
                 i = key.find("]")
                 section, item = key[1:i], key[i+1:]
@@ -476,7 +491,9 @@ class IniReader:
 
             raise tox.exception.ConfigError(
                 "substitution key %r not found" % key)
-        return str(self._subs[key])
+        elif py.builtin.callable(val):
+            val = val()
+        return str(val)
 
     def _replace_posargs(self, match):
         return self._do_replace_posargs(lambda: match.group('substitution_value'))
@@ -511,7 +528,10 @@ class IniReader:
         if sub_key not in self._subs:
             raise tox.exception.ConfigError(
                 "substitution key %r not found" % sub_key)
-        return '"%s"' % str(self._subs[sub_key]).replace('"', r'\"')
+        val = self._subs[sub_key]
+        if py.builtin.callable(val):
+            val = val()
+        return '"%s"' % str(val).replace('"', r'\"')
 
     def _is_bare_posargs(self, groupdict):
         return groupdict.get('substitution_value', None) == 'posargs' \

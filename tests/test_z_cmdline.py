@@ -64,6 +64,8 @@ def test__resolve_pkg_doubledash(tmpdir, mocksession):
     res = mocksession._resolve_pkg(distshare.join("pkg-mine*"))
     assert res == p
 
+
+
 class TestSession:
     def test_make_sdist(self, initproj):
         initproj("example123-0.5", filedefs={
@@ -127,10 +129,10 @@ class TestSession:
         envs = session.venvlist
         assert len(envs) == 2
         env1, env2 = envs
-        session.setenvstatus(env1, "FAIL XYZ")
-        assert session.venvstatus[env1.path]
-        session.setenvstatus(env2, 0)
-        assert not session.venvstatus[env2.path]
+        env1.status = "FAIL XYZ"
+        assert env1.status
+        env2.status = 0
+        assert not env2.status
         session._summary()
         out, err = capfd.readouterr()
         exp = "%s: FAIL XYZ" % env1.envconfig.envname
@@ -274,7 +276,7 @@ def test_package_install_fails(cmd, initproj):
                 name='pkg123',
                 description='pkg123 project',
                 version='0.7',
-                license='GPLv2 or later',
+                license='MIT',
                 platforms=['unix', 'win32'],
                 packages=['pkg123',],
                 install_requires=['qweqwe123'],
@@ -421,7 +423,7 @@ def test_separate_sdist(cmd, initproj):
     result = cmd.run("tox", "-v", "--notest")
     assert not result.ret
     result.stdout.fnmatch_lines([
-        "*sdist-inst*%s*" % sdistfile,
+        "*inst*%s*" % sdistfile,
     ])
 
 
@@ -432,17 +434,30 @@ def test_sdist_latest(tmpdir, newconfig):
             distshare=%s
             sdistsrc={distshare}/pkg123-*
     """ % distshare)
-    distshare.ensure("pkg123-1.3.5.zip")
+    p0 = distshare.ensure("pkg123-1.3.5.zip")
     p = distshare.ensure("pkg123-1.4.5.zip")
     distshare.ensure("pkg123-1.4.5a1.zip")
     session = Session(config)
     sdist_path = session.sdist()
     assert sdist_path == p
 
+def test_installpkg(tmpdir, newconfig):
+    p = tmpdir.ensure("pkg123-1.0.zip")
+    config = newconfig(["--installpkg=%s" % p], "")
+    session = Session(config)
+    sdist_path = session.sdist()
+    assert sdist_path == p
+
+@pytest.mark.xfail("sys.platform == 'win32'", reason="test needs better impl")
 def test_envsitepackagesdir(cmd, initproj):
     initproj("pkg512-0.0.5", filedefs={
         'tox.ini': """
+        [testenv]
         commands=
-            grep '__version__.*=.*0\.0\.5' {envsitepackagesdir}/pkg512/__init__.py
+            echo X:{envsitepackagesdir}
     """})
     result = cmd.run("tox")
+    assert result.ret == 0
+    result.stdout.fnmatch_lines("""
+        X:*site-packages*
+    """)

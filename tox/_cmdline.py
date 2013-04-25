@@ -81,7 +81,7 @@ class Action(object):
             f.write("actionid=%s\nmsg=%s\ncmdargs=%r\nenv=%s\n" %(
                     self.id, self.msg, args, env))
             f.flush()
-            outpath = py.path.local(f.name)
+            self.popen_outpath = outpath = py.path.local(f.name)
         if cwd is None:
             # XXX cwd = self.session.config.cwd
             cwd = py.path.local()
@@ -92,7 +92,7 @@ class Action(object):
         popen.action = self
         self._popenlist.append(popen)
         try:
-            self.report.logpopen(popen)
+            self.report.logpopen(popen, env=env)
             try:
                 out, err = popen.communicate()
             except KeyboardInterrupt:
@@ -105,10 +105,11 @@ class Action(object):
         if ret:
             invoked = " ".join(map(str, popen.args))
             if outpath:
-                self.report.error("invocation failed, logfile: %s" % outpath)
+                self.report.error("invocation failed, logfile: %s" %
+                                  outpath)
                 self.report.error(outpath.read())
                 raise tox.exception.InvocationError(
-                    "%s (see %s)" %(invoked, outpath))
+                    "%s (see %s)" %(invoked, outpath), ret)
             else:
                 raise tox.exception.InvocationError("%r" %(invoked, ))
         return out
@@ -119,6 +120,14 @@ class Action(object):
             if sys.platform != "win32" and isinstance(arg, py.path.local):
                 arg = cwd.bestrelpath(arg)
             newargs.append(str(arg))
+
+        #subprocess does not always take kindly to .py scripts
+        #so adding the interpreter here.
+        if sys.platform == "win32":
+            ext = os.path.splitext(str(newargs[0]))[1].lower()
+            if ext == '.py' and self.venv:
+                newargs = [str(self.venv.getcommandpath())] + newargs
+
         return newargs
 
     def _popen(self, args, cwd, stdout, stderr, env=None):
@@ -128,14 +137,17 @@ class Action(object):
         return self.session.popen(args, shell=False, cwd=str(cwd),
             stdout=stdout, stderr=stderr, env=env)
 
+
+
 class Reporter(object):
     actionchar = "-"
     def __init__(self, session):
         self.tw = py.io.TerminalWriter()
         self.session = session
+        self._reportedlines = []
         #self.cumulated_time = 0.0
 
-    def logpopen(self, popen):
+    def logpopen(self, popen, env):
         """ log information about the action.popen() created process. """
         cmd = " ".join(map(str, popen.args))
         if popen.outpath:
@@ -170,7 +182,7 @@ class Reporter(object):
 
 
     def keyboard_interrupt(self):
-        self.tw.line("KEYBOARDINTERRUPT", red=True)
+        self.error("KEYBOARDINTERRUPT")
 
 #    def venv_installproject(self, venv, pkg):
 #        self.logline("installing to %s: %s" % (venv.envconfig.envname, pkg))
@@ -195,26 +207,26 @@ class Reporter(object):
         self.logline("ERROR: " + msg, red=True)
 
     def logline(self, msg, **opts):
+        self._reportedlines.append(msg)
         self.tw.line("%s" % msg, **opts)
 
     def verbosity0(self, msg, **opts):
         if self.session.config.option.verbosity >= 0:
-            self.tw.line("%s" % msg, **opts)
+            self.logline("%s" % msg, **opts)
 
     def verbosity1(self, msg, **opts):
         if self.session.config.option.verbosity >= 1:
-            self.tw.line("%s" % msg, **opts)
+            self.logline("%s" % msg, **opts)
 
     def verbosity2(self, msg, **opts):
         if self.session.config.option.verbosity >= 2:
-            self.tw.line("%s" % msg, **opts)
+            self.logline("%s" % msg, **opts)
 
     #def log(self, msg):
     #    py.builtin.print_(msg, file=sys.stderr)
 
 
 class Session:
-    passthroughpossible = True
 
     def __init__(self, config, popen=subprocess.Popen, Report=Reporter):
         self.config = config
@@ -224,7 +236,6 @@ class Session:
         config.logdir.ensure(dir=1)
         #self.report.using("logdir %s" %(self.config.logdir,))
         self.report.using("tox.ini: %s" %(self.config.toxinipath,))
-        self.venvstatus = {}
         self._spec2pkg = {}
         self._name2venv = {}
         try:
@@ -256,12 +267,11 @@ class Session:
         return action
 
     def runcommand(self):
-        #tw.sep("-", "tox info from %s" % self.options.configfile)
-        self.report.using("tox-%s from %s" %(tox.__version__, tox.__file__))
+        self.report.using("tox-%s from %s" %(tox.__version__,
+                                             tox.__file__))
         if self.config.minversion:
             minversion = NormalizedVersion(self.config.minversion)
             toxversion = NormalizedVersion(tox.__version__)
-            #self.report.using("requires at least %s" %(minversion,))
             if toxversion < minversion:
                 self.report.error(
                     "tox version is %s, required is at least %s" %(
@@ -269,6 +279,8 @@ class Session:
                 raise SystemExit(1)
         if self.config.option.showconfig:
             self.showconfig()
+        elif self.config.option.listenvs:
+            self.showenvs()
         else:
             return self.subcommand_test()
 
@@ -281,9 +293,6 @@ class Session:
             target = destdir.join(relpath)
             target.dirpath().ensure(dir=1)
             src.copy(target)
-
-    def setenvstatus(self, venv, msg):
-        self.venvstatus[venv.path] = msg
 
     def _makesdist(self):
         setup = self.config.setupdir.join("setup.py")
@@ -307,33 +316,36 @@ class Session:
     def setupenv(self, venv):
         action = self.newaction(venv, "getenv", venv.envconfig.envdir)
         with action:
-            self.venvstatus[venv.path] = 0
+            venv.status = 0
             try:
                 status = venv.update(action=action)
             except tox.exception.InvocationError:
                 status = sys.exc_info()[1]
             if status:
-                self.setenvstatus(venv, status)
+                venv.status = status
                 self.report.error(str(status))
                 return False
             return True
 
-    def installsdist(self, venv, sdist_path):
-        action = self.newaction(venv, "sdist-install", sdist_path)
+    def installpkg(self, venv, sdist_path):
+        action = self.newaction(venv, "installpkg", sdist_path)
         with action:
             try:
-                venv.install_sdist(sdist_path, action)
+                venv.installpkg(sdist_path, action)
                 return True
             except tox.exception.InvocationError:
-                self.setenvstatus(venv, sys.exc_info()[1])
+                venv.status = sys.exc_info()[1]
                 return False
 
     def sdist(self):
-        if not self.config.option.sdistonly and self.config.sdistsrc:
-            self.report.info("using sdistfile %r, skipping 'sdist' activity " %
-                str(self.config.sdistsrc))
-            sdist_path = self.config.sdistsrc
+        if not self.config.option.sdistonly and (self.config.sdistsrc or
+            self.config.option.installpkg):
+            sdist_path = self.config.option.installpkg
+            if not sdist_path:
+                sdist_path = self.config.sdistsrc
             sdist_path = self._resolve_pkg(sdist_path)
+            self.report.info("using package %r, skipping 'sdist' activity " %
+                str(sdist_path))
         else:
             try:
                 sdist_path = self._makesdist()
@@ -357,25 +369,24 @@ class Session:
             return
         for venv in self.venvlist:
             if self.setupenv(venv):
-                self.installsdist(venv, sdist_path)
+                self.installpkg(venv, sdist_path)
                 self.runtestenv(venv, sdist_path)
         retcode = self._summary()
         return retcode
 
     def runtestenv(self, venv, sdist_path, redirect=False):
         if not self.config.option.notest:
-            if self.venvstatus[venv.path]:
+            if venv.status:
                 return
-            if venv.test(redirect=redirect):
-                self.setenvstatus(venv, "commands failed")
+            venv.test(redirect=redirect)
         else:
-            self.setenvstatus(venv, "skipped tests")
+            venv.status = "skipped tests"
 
     def _summary(self):
         self.report.startsummary()
         retcode = 0
         for venv in self.venvlist:
-            status = self.venvstatus[venv.path]
+            status = venv.status
             if status and status != "skipped tests":
                 msg = "  %s: %s" %(venv.envconfig.envname, str(status))
                 self.report.error(msg)
@@ -383,7 +394,8 @@ class Session:
             else:
                 if not status:
                     status = "commands succeeded"
-                self.report.good("  %s: %s" %(venv.envconfig.envname, status))
+                self.report.good("  %s: %s" %(venv.envconfig.envname,
+                                              status))
         if not retcode:
             self.report.good("  congratulations :)")
         return retcode
@@ -412,6 +424,10 @@ class Session:
             self.report.line("  deps=%s" % envconfig.deps)
             self.report.line("  envdir=    %s" % envconfig.envdir)
             self.report.line("  downloadcache=%s" % envconfig.downloadcache)
+
+    def showenvs(self):
+        for env in self.config.envlist:
+            self.report.line("%s" % env)
 
     def info_versions(self):
         versions = ['tox-%s' % tox.__version__]

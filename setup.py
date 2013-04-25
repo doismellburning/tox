@@ -41,7 +41,7 @@ class Tox(TestCommand):
 
 def main():
     version = sys.version_info[:2]
-    install_requires = ['virtualenv==1.8.4', 'py>=1.4.9', ]
+    install_requires = ['virtualenv>=1.9.1', 'py>=1.4.13', ]
     if version < (2, 7) or (3, 0) <= version <= (3, 1):
         install_requires += ['argparse']
     setup(
@@ -49,8 +49,8 @@ def main():
         description='virtualenv-based automation of test activities',
         long_description=long_description,
         url='http://tox.testrun.org/',
-        version='1.4.3.dev3',
-        license='GPLv2 or later',
+        version='1.5.dev6',
+        license='http://opensource.org/licenses/MIT',
         platforms=['unix', 'linux', 'osx', 'cygwin', 'win32'],
         author='holger krekel',
         author_email='holger@merlinux.eu',
@@ -65,15 +65,15 @@ def main():
         classifiers=[
             'Development Status :: 5 - Production/Stable',
             'Intended Audience :: Developers',
-            'License :: OSI Approved :: GNU General Public License (GPL)',
-             'Operating System :: POSIX',
-             'Operating System :: Microsoft :: Windows',
-             'Operating System :: MacOS :: MacOS X',
-             'Topic :: Software Development :: Testing',
-             'Topic :: Software Development :: Libraries',
-             'Topic :: Utilities',
-             'Programming Language :: Python',
-             'Programming Language :: Python :: 3'],
+            'License :: OSI Approved :: MIT License',
+            'Operating System :: POSIX',
+            'Operating System :: Microsoft :: Windows',
+            'Operating System :: MacOS :: MacOS X',
+            'Topic :: Software Development :: Testing',
+            'Topic :: Software Development :: Libraries',
+            'Topic :: Utilities',
+            'Programming Language :: Python',
+            'Programming Language :: Python :: 3'],
     )
 
 if __name__ == '__main__':

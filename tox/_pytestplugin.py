@@ -18,8 +18,7 @@ def pytest_configure():
 def pytest_report_header():
     return "tox comes from: %r" % (tox.__file__)
 
-def pytest_funcarg__newconfig(request):
-    tmpdir = request.getfuncargvalue("tmpdir")
+def pytest_funcarg__newconfig(request, tmpdir):
     def newconfig(args, source=None):
         if source is None:
             source = args
@@ -263,14 +262,18 @@ def initproj(request, tmpdir):
                     name='%(name)s',
                     description='%(name)s project',
                     version='%(version)s',
-                    license='GPLv2 or later',
+                    license='MIT',
                     platforms=['unix', 'win32'],
                     packages=['%(name)s', ],
                 )
             ''' % locals()})
         if name not in filedefs:
             create_files(base, {name:
-                {'__init__.py': '__version__ = %s' % version}})
+                {'__init__.py': '__version__ = %r' % version}})
+        manifestlines = []
+        for p in base.visit(lambda x: x.check(file=1)):
+            manifestlines.append("include %s" % p.relto(base))
+        create_files(base, {"MANIFEST.in": "\n".join(manifestlines)})
         print ("created project in %s" %(base,))
         base.chdir()
     return initproj

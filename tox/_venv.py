@@ -162,8 +162,10 @@ class VirtualEnv(object):
         venvscript = path.rstrip("co")
         #venvscript = py.path.local(tox.__file__).dirpath("virtualenv.py")
         args = [config_interpreter, venvscript]
-        if not self._ispython3() and self.envconfig.distribute:
-            args.append('--distribute')
+        if self.envconfig.distribute:
+            args.append("--distribute")
+        else:
+            args.append("--setuptools")
         if self.envconfig.sitepackages:
             args.append('--system-site-packages')
         #if sys.platform == "win32":
@@ -178,14 +180,14 @@ class VirtualEnv(object):
         self._pcall(args, venv=False, action=action, cwd=basepath)
         self.just_created = True
 
-    def install_sdist(self, sdistpath, action):
+    def installpkg(self, sdistpath, action):
         assert action is not None
         if getattr(self, 'just_created', False):
-            action.setactivity("sdist-inst", sdistpath)
+            action.setactivity("inst", sdistpath)
             self._getliveconfig().writeconfig(self.path_config)
             extraopts = []
         else:
-            action.setactivity("sdist-reinst", sdistpath)
+            action.setactivity("inst-nodeps", sdistpath)
             extraopts = ['-U', '--no-deps']
         self._install([sdistpath], extraopts=extraopts, action=action)
 
@@ -211,6 +213,9 @@ class VirtualEnv(object):
 
     def pip_install(self, args, indexserver=None, action=None):
         argv = ["pip", "install"] + self._commoninstallopts(indexserver)
+        # use pip-script on win32 to avoid the executable locking
+        if sys.platform == "win32":
+            argv[0] = "pip-script.py"
         if self.envconfig.downloadcache:
             self.envconfig.downloadcache.ensure(dir=1)
             argv.append("--download-cache=%s" %
@@ -260,6 +265,7 @@ class VirtualEnv(object):
     def test(self, redirect=False):
         action = self.session.newaction(self, "runtests")
         with action:
+            self.status = 0
             self.session.make_emptydir(self.envconfig.envtmpdir)
             cwd = self.envconfig.changedir
             for i, argv in enumerate(self.envconfig.commands):
@@ -267,8 +273,13 @@ class VirtualEnv(object):
                 try:
                     self._pcall(argv, cwd=cwd, action=action, redirect=redirect)
                 except tox.exception.InvocationError:
-                    self.session.report.error(str(sys.exc_info()[1]))
-                    return True
+                    val = sys.exc_info()[1]
+                    self.session.report.error(str(val))
+                    self.status = "commands failed"
+                except KeyboardInterrupt:
+                    self.status = "keyboardinterrupt"
+                    self.session.report.error(self.status)
+                    raise
 
     def _pcall(self, args, venv=True, cwd=None, extraenv={},
             action=None, redirect=True):

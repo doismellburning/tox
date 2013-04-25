@@ -1,5 +1,7 @@
 import tox
+import pytest
 import os, sys
+import subprocess
 from textwrap import dedent
 
 import py
@@ -23,10 +25,8 @@ class TestVenvConfig:
             indexserver =
                 xyz = xyz_repo
             [testenv:py1]
-            basepython=xyz
             deps=hello
             [testenv:py2]
-            basepython=hello
             deps=
                 world1
                 :xyz:http://hello/world
@@ -34,11 +34,9 @@ class TestVenvConfig:
         assert config.toxworkdir == tmpdir
         assert len(config.envconfigs) == 2
         assert config.envconfigs['py1'].envdir == tmpdir.join("py1")
-        assert config.envconfigs['py1'].basepython == "xyz"
         dep = config.envconfigs['py1'].deps[0]
         assert dep.name == "hello"
         assert dep.indexserver is None
-        assert config.envconfigs['py2'].basepython == "hello"
         assert config.envconfigs['py2'].envdir == tmpdir.join("py2")
         dep1, dep2 = config.envconfigs['py2'].deps
         assert dep1.name == "world1"
@@ -340,11 +338,11 @@ class TestConfigTestEnv:
         config = newconfig("""
             [testenv]
             commands=xyz
-            [testenv:py30]
+            [testenv:py]
             commands=abc
         """)
         assert len(config.envconfigs) == 1
-        envconfig = config.envconfigs['py30']
+        envconfig = config.envconfigs['py']
         assert envconfig.commands == [["abc"]]
 
     def test_changedir(self, tmpdir, newconfig):
@@ -366,14 +364,18 @@ class TestConfigTestEnv:
         envconfig = config.envconfigs['python']
         assert envconfig.envpython == envconfig.envbindir.join("python")
 
-    def test_envbindir_jython(self, tmpdir, newconfig):
+    @pytest.mark.parametrize("bp", ["jython", "pypy"])
+    def test_envbindir_jython(self, tmpdir, newconfig, bp):
         config = newconfig("""
             [testenv]
-            basepython=jython
-        """)
+            basepython=%s
+        """ % bp)
         assert len(config.envconfigs) == 1
         envconfig = config.envconfigs['python']
-        assert envconfig.envpython == envconfig.envbindir.join("jython")
+        # on win32 and linux virtualenv uses "bin" for pypy/jython
+        assert envconfig.envbindir.basename == "bin"
+        if bp == "jython":
+            assert envconfig.envpython == envconfig.envbindir.join(bp)
 
     def test_setenv_overrides(self, tmpdir, newconfig):
         config = newconfig("""
@@ -589,6 +591,35 @@ class TestConfigTestEnv:
         assert conf.changedir.basename == 'testing'
         assert conf.changedir.dirpath().realpath() == tmpdir.realpath()
 
+    @pytest.mark.xfailif("sys.platform == 'win32'")
+    def test_substitution_envsitepackagesdir(self, tmpdir, monkeypatch,
+                                             newconfig):
+        """
+         The envsitepackagesdir property is mostly doing system work,
+         so this test doesn't excercise it very well.
+
+         Usage of envsitepackagesdir on win32/jython will explicitly
+         throw an exception,
+        """
+        class MockPopen(object):
+            returncode = 0
+
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def communicate(self, *args, **kwargs):
+                return 'onevalue', 'othervalue'
+
+        monkeypatch.setattr(subprocess, 'Popen', MockPopen)
+        env = 'py%s' % (''.join(sys.version.split('.')[0:2]))
+        config = newconfig("""
+            [testenv:%s]
+            commands = {envsitepackagesdir}
+        """ % (env))
+        conf = config.envconfigs[env]
+        argv = conf.commands
+        assert argv[0][0] == 'onevalue'
+
 
 class TestGlobalOptions:
     def test_notest(self, newconfig):
@@ -673,7 +704,7 @@ class TestGlobalOptions:
         assert str(env.basepython) == sys.executable
 
     def test_default_environments(self, tmpdir, newconfig, monkeypatch):
-        envs = "py24,py25,py26,py27,py30,py31,py32,jython,pypy"
+        envs = "py24,py25,py26,py27,py31,py32,jython,pypy"
         inisource = """
             [tox]
             envlist = %s
@@ -747,6 +778,10 @@ class TestIndexServer:
         assert config.indexserver['default'].url == "qwe2"
         assert config.indexserver['name1'].url == "abc"
 
+        config = newconfig(["-i", "ALL=xzy"], inisource)
+        assert len(config.indexserver) == 2
+        assert config.indexserver["default"].url == "xzy"
+        assert config.indexserver["name1"].url == "xzy"
 
 class TestParseEnv:
 
@@ -779,6 +814,28 @@ class TestCmdInvocation:
         stdout = result.stdout.str()
         assert tox.__version__ in stdout
         assert "imported from" in stdout
+
+    def test_listenvs(self, cmd, initproj):
+        initproj('listenvs', filedefs={
+            'tox.ini': '''
+            [tox]
+            envlist=py26,py27,py33,pypy,docs
+
+            [testenv:notincluded]
+            changedir = whatever
+
+            [testenv:docs]
+            changedir = docs
+            ''',
+        })
+        result = cmd.run("tox", "-l")
+        result.stdout.fnmatch_lines("""
+            *py26*
+            *py27*
+            *py33*
+            *pypy*
+            *docs*
+        """)
 
     @py.test.mark.xfail("sys.version_info < (2,6)",
         reason="virtualenv3 cannot be imported")
