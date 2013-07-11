@@ -2,7 +2,7 @@ import tox
 import py
 import pytest
 import sys
-from conftest import ReportExpectMock
+from tox._pytestplugin import ReportExpectMock
 
 pytest_plugins = "pytester"
 
@@ -378,6 +378,15 @@ def test_env_PYTHONDONTWRITEBYTECODE(initproj, cmd, monkeypatch):
     monkeypatch.setenv("PYTHONDOWNWRITEBYTECODE", 1)
     result = cmd.run("tox", "-v", "--notest")
     assert not result.ret
+    result.stdout.fnmatch_lines([
+        "*create*",
+    ])
+
+def test_env_VIRTUALENV_PYTHON(initproj, cmd, monkeypatch):
+    initproj("example123", filedefs={'tox.ini': ''})
+    monkeypatch.setenv("VIRTUALENV_PYTHON", '/FOO')
+    result = cmd.run("tox", "-v", "--notest")
+    assert not result.ret, result.stdout.lines
     result.stdout.fnmatch_lines([
         "*create*",
     ])

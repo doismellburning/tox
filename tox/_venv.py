@@ -74,20 +74,37 @@ class VirtualEnv(object):
             p = cwd.join(name)
             if p.check():
                 return str(p)
+        p = None
+        if venv:
+            p = py.path.local.sysfind(name, paths=[self.envconfig.envbindir])
+        if p is not None:
+            return p
         p = py.path.local.sysfind(name)
         if p is None:
-            raise tox.exception.InvocationError("could not find executable %r"
-                % (name,))
-        if p.relto(self.envconfig.envdir):
-            return p
+            raise tox.exception.InvocationError(
+                    "could not find executable %r" % (name,))
+        # p is not found in virtualenv script/bin dir
         if venv:
-            self.session.report.warning(
-                "test command found but not installed in testenv\n"
-                "  cmd: %s\n"
-                "  env: %s\n"
-                "Maybe forgot to specify a dependency?" % (p,
-                self.envconfig.envdir))
+            if not self.is_allowed_external(p):
+                self.session.report.warning(
+                    "test command found but not installed in testenv\n"
+                    "  cmd: %s\n"
+                    "  env: %s\n"
+                    "Maybe forgot to specify a dependency?" % (p,
+                    self.envconfig.envdir))
         return str(p) # will not be rewritten for reporting
+
+    def is_allowed_external(self, p):
+        tryadd = [""]
+        if sys.platform == "win32":
+            tryadd += [os.path.normcase(x)
+                        for x in os.environ['PATHEXT'].split(os.pathsep)]
+            p = py.path.local(os.path.normcase(str(p)))
+        for x in self.envconfig.whitelist_externals:
+            for add in tryadd:
+                if p.fnmatch(x + add):
+                    return True
+        return False
 
     def _ispython3(self):
         return "python3" in str(self.envconfig.basepython)
@@ -284,6 +301,11 @@ class VirtualEnv(object):
 
     def _pcall(self, args, venv=True, cwd=None, extraenv={},
             action=None, redirect=True):
+        for name in ("VIRTUALENV_PYTHON", "PYTHONDONTWRITEBYTECODE"):
+            try:
+                del os.environ[name]
+            except KeyError:
+                pass
         assert cwd
         cwd.ensure(dir=1)
         old = self.patchPATH()

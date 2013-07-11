@@ -102,6 +102,20 @@ def test_create(monkeypatch, mocksession, newconfig):
     assert interp == venv.getconfigexecutable()
     assert venv.path_config.check(exists=False)
 
+@pytest.mark.skipif("sys.platform == 'win32'")
+def test_commandpath_venv_precendence(tmpdir, monkeypatch,
+                                      mocksession, newconfig):
+    config = newconfig([], """
+        [testenv:py123]
+    """)
+    envconfig = config.envconfigs['py123']
+    venv = VirtualEnv(envconfig, session=mocksession)
+    tmpdir.ensure("easy_install")
+    monkeypatch.setenv("PATH", str(tmpdir), prepend=os.pathsep)
+    envconfig.envbindir.ensure("easy_install")
+    p = venv.getcommandpath("easy_install")
+    assert py.path.local(p).relto(envconfig.envbindir), p
+
 def test_create_distribute(monkeypatch, mocksession, newconfig):
     config = newconfig([], """
         [testenv:py123]
@@ -295,6 +309,21 @@ def test_install_command_not_installed(newmocksession, monkeypatch):
     mocksession.report.expect("warning", "*test command found but not*")
     assert venv.status == "commands failed"
 
+def test_install_command_whitelisted(newmocksession, monkeypatch):
+    mocksession = newmocksession(['--recreate'], """
+        [testenv]
+        whitelist_externals = py.test
+                              xy*
+        commands=
+            py.test
+            xyz
+    """)
+    venv = mocksession.getenv('python')
+    venv.test()
+    mocksession.report.expect("warning", "*test command found but not*",
+                              invert=True)
+    assert venv.status == "commands failed"
+
 @pytest.mark.skipif("not sys.platform.startswith('linux')")
 def test_install_command_not_installed(newmocksession):
     mocksession = newmocksession(['--recreate'], """
@@ -438,7 +467,7 @@ class TestCreationConfig:
         venv = VirtualEnv(envconfig, session=mocksession)
         venv.update()
         cconfig = venv._getliveconfig()
-        cconfig.distribute = False
+        cconfig.distribute = True
         cconfig.writeconfig(venv.path_config)
         mocksession._clearmocks()
         venv.update()

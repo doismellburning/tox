@@ -382,7 +382,7 @@ class TestConfigTestEnv:
         envconfig = config.envconfigs['python']
         assert envconfig.commands == [["xyz", "--abc"]]
         assert envconfig.changedir == config.setupdir
-        assert envconfig.distribute == True
+        assert envconfig.distribute == False
         assert envconfig.sitepackages == False
         assert envconfig.envlogdir == envconfig.envdir.join("log")
         assert envconfig.setenv is None
@@ -397,6 +397,24 @@ class TestConfigTestEnv:
         assert len(config.envconfigs) == 1
         envconfig = config.envconfigs['py']
         assert envconfig.commands == [["abc"]]
+
+    def test_whitelist_externals(self, tmpdir, newconfig):
+        config = newconfig("""
+            [testenv]
+            whitelist_externals = xyz
+            commands=xyz
+            [testenv:x]
+
+            [testenv:py]
+            whitelist_externals = xyz2
+            commands=abc
+        """)
+        assert len(config.envconfigs) == 2
+        envconfig = config.envconfigs['py']
+        assert envconfig.commands == [["abc"]]
+        assert envconfig.whitelist_externals == ["xyz2"]
+        envconfig = config.envconfigs['x']
+        assert envconfig.whitelist_externals == ["xyz"]
 
     def test_changedir(self, tmpdir, newconfig):
         config = newconfig("""
@@ -847,8 +865,10 @@ class TestIndexServer:
         """
         config = newconfig([], inisource)
         homedir = str(py.path.local._gethomedir())
-        assert config.indexserver['default'].url == "file://{h}/.pip/downloads/simple".format(h=homedir)
-        assert config.indexserver['local1'].url == config.indexserver['default'].url
+        expected = "file://%s/.pip/downloads/simple" % homedir
+        assert config.indexserver['default'].url == expected
+        assert config.indexserver['local1'].url == \
+               config.indexserver['default'].url
 
 class TestParseEnv:
 
@@ -904,8 +924,6 @@ class TestCmdInvocation:
             *docs*
         """)
 
-    @py.test.mark.xfail("sys.version_info < (2,6)",
-        reason="virtualenv3 cannot be imported")
     def test_config_specific_ini(self, tmpdir, cmd):
         ini = tmpdir.ensure("hello.ini")
         result = cmd.run("tox", "-c", ini, "--showconfig")

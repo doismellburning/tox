@@ -1,17 +1,34 @@
-1.5.0.dev
+1.5.1.dev
 -----------------
+
+- always unset PYTHONDONTWRITEBYTE because newer setuptools doesn't like it
+
+1.5.0
+-----------------
+
+- fix issue104: use setuptools by default, instead of distribute,
+  now that setuptools has distribute merged.
+
+- make sure test commands are searched first in the virtualenv 
+
+- re-fix issue2 - add whitelist_externals to be used in ``[testenv*]``
+  sections, allowing to avoid warnings for commands such as ``make``,
+  used from the commands value.
 
 - fix issue97 - allow substitutions to reference from other sections
   (thanks Krisztian Fekete)
 
 - fix issue92 - fix {envsitepackagesdir} to actually work again
 
+- show (test) command that is being executed, thanks 
+  Lukasz Balcerzak
+
 - re-license tox to MIT license
 
 - depend on virtualenv-1.9.1 
 
-- use either --distribute or --setuptools depending 
-  on "distribute" env config
+- rename README.txt to README.rst to make bitbucket happier
+
 
 1.4.3
 -----------------
@@ -59,7 +76,7 @@
 
 - change tests to not rely on os.path.expanduser (closes #60),
   also make mock session return args[1:] for more precise checking (closes #61)
-  thanks to Barry Warszaw for both.
+  thanks to Barry Warsaw for both.
 
 1.4.2
 -----------------
