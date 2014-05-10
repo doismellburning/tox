@@ -1,13 +1,10 @@
 import argparse
-import distutils.sysconfig
 import os
 import random
 import sys
 import re
 import shlex
 import string
-import subprocess
-import textwrap
 import pkg_resources
 
 from tox.interpreters import Interpreters
@@ -132,6 +129,8 @@ def prepare_parse(pkgname):
              "'pytest<2.7' or 'django>=1.6'.")
     parser.add_argument("--sitepackages", action="store_true",
         help="override sitepackages setting to True in all envs")
+    parser.add_argument("--skip-missing-interpreters", action="store_true",
+        help="don't fail tests for missing interpreters")
 
     parser.add_argument("args", nargs="*",
         help="additional arguments available to command positional substitution")
@@ -205,7 +204,7 @@ def make_hashseed():
 class parseini:
     def __init__(self, config, inipath):
         config.toxinipath = inipath
-        config.toxinidir = toxinidir = config.toxinipath.dirpath()
+        config.toxinidir = config.toxinipath.dirpath()
 
         self._cfg = py.iniconfig.IniConfig(config.toxinipath)
         config._cfg = self._cfg
@@ -239,7 +238,7 @@ class parseini:
         # determine indexserver dictionary
         config.indexserver = {'default': IndexServerConfig('default')}
         prefix = "indexserver"
-        for line in reader.getlist(toxsection, "indexserver"):
+        for line in reader.getlist(toxsection, prefix):
             name, url = map(lambda x: x.strip(), line.split("=", 1))
             config.indexserver[name] = IndexServerConfig(name, url)
 

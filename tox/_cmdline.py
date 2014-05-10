@@ -79,7 +79,6 @@ class Action(object):
         return f
 
     def popen(self, args, cwd=None, env=None, redirect=True, returnout=False):
-        logged_command = "%s$ %s" %(cwd, " ".join(map(str, args)))
         f = outpath = None
         resultjson = self.session.config.option.resultjson
         if resultjson or redirect:
@@ -227,6 +226,9 @@ class Reporter(object):
 
     def error(self, msg):
         self.logline("ERROR: " + msg, red=True)
+
+    def skip(self, msg):
+        self.logline("SKIPPED:" + msg, yellow=True)
 
     def logline(self, msg, **opts):
         self._reportedlines.append(msg)
@@ -416,7 +418,8 @@ class Session:
                 sdist_path = self._makesdist()
             except tox.exception.InvocationError:
                 v = sys.exc_info()[1]
-                self.report.error("FAIL could not package project")
+                self.report.error("FAIL could not package project - v = %r" %
+                    v)
                 return
             sdistfile = self.config.distshare.join(sdist_path.basename)
             if sdistfile != sdist_path:
@@ -466,7 +469,14 @@ class Session:
         retcode = 0
         for venv in self.venvlist:
             status = venv.status
-            if status and status != "skipped tests":
+            if isinstance(status, tox.exception.InterpreterNotFound):
+                msg = "  %s: %s" %(venv.envconfig.envname, str(status))
+                if self.config.option.skip_missing_interpreters:
+                    self.report.skip(msg)
+                else:
+                    retcode = 1
+                    self.report.error(msg)
+            elif status and status != "skipped tests":
                 msg = "  %s: %s" %(venv.envconfig.envname, str(status))
                 self.report.error(msg)
                 retcode = 1
