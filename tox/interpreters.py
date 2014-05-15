@@ -1,8 +1,6 @@
 import sys
-import os
 import py
 import re
-import subprocess
 import inspect
 
 class Interpreters:
@@ -161,7 +159,7 @@ else:
         # The standard executables can be found as a last resort via the
         # Python launcher py.exe
         if m:
-            locate_via_py(*m.groups())
+            return locate_via_py(*m.groups())
 
 def pyinfo():
     import sys

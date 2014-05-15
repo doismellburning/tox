@@ -1,12 +1,11 @@
-import tox
-import pytest
-import os, sys
-import subprocess
+import sys
 from textwrap import dedent
 
 import py
+import pytest
+import tox
 import tox._config
-from tox._config import *
+from tox._config import *  # noqa
 from tox._config import _split_env
 
 
@@ -110,7 +109,6 @@ class TestConfigPackage:
 
     def test_defaults_distshare(self, tmpdir, newconfig):
         config = newconfig([], "")
-        envconfig = config.envconfigs['python']
         assert config.distshare == config.homedir.join(".tox", "distshare")
 
     def test_defaults_changed_dir(self, tmpdir, newconfig):
@@ -168,6 +166,7 @@ class TestIniParser:
             key2={xyz}
         """)
         reader = IniReader(config._cfg, fallbacksections=['mydefault'])
+        assert reader is not None
         py.test.raises(tox.exception.ConfigError,
             'reader.getdefault("mydefault", "key2")')
 
@@ -241,6 +240,22 @@ class TestIniParser:
         assert x == "hello"
         py.test.raises(tox.exception.ConfigError,
             'reader.getdefault("section", "key2")')
+
+    def test_getdefault_environment_substitution_with_default(self, monkeypatch, newconfig):
+        monkeypatch.setenv("KEY1", "hello")
+        config = newconfig("""
+            [section]
+            key1={env:KEY1:DEFAULT_VALUE}
+            key2={env:KEY2:DEFAULT_VALUE}
+            key3={env:KEY3:}
+        """)
+        reader = IniReader(config._cfg)
+        x = reader.getdefault("section", "key1")
+        assert x == "hello"
+        x = reader.getdefault("section", "key2")
+        assert x == "DEFAULT_VALUE"
+        x = reader.getdefault("section", "key3")
+        assert x == ""
 
     def test_getdefault_other_section_substitution(self, newconfig):
         config = newconfig("""

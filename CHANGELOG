@@ -1,3 +1,28 @@
+development
+-----------
+
+- fix issue59: add option "--skip-missing-interpreters" which won't fail the
+  build if Python interpreters listed in tox.ini are missing.  Thanks 
+  Alexandre Conrad for PR104.
+
+- fix issue164: better traceback info in case of failing test commands.
+  Thanks Marc Abramowitz for PR92.
+
+- support optional env variable substitution, thanks Morgan Fainberg
+  for PR86.
+
+- limit python hashseed to 1024 on Windows to prevent possible
+  memory errors.  Thanks March Schlaich for the PR90.
+
+1.7.1
+---------
+
+- fix issue162: don't list python 2.5 as compatibiliy/supported
+
+- fix issue158 and fix issue155: windows/virtualenv properly works now:
+  call virtualenv through "python -m virtualenv" with the same 
+  interpreter which invoked tox.  Thanks Chris Withers, Ionel Maries Cristian.
+
 1.7.0
 ---------
 

@@ -1,13 +1,10 @@
 import argparse
-import distutils.sysconfig
 import os
 import random
 import sys
 import re
 import shlex
 import string
-import subprocess
-import textwrap
 import pkg_resources
 
 from tox.interpreters import Interpreters
@@ -123,7 +120,8 @@ def prepare_parse(pkgname):
     parser.add_argument("--hashseed", action="store",
         metavar="SEED", default=None,
         help="set PYTHONHASHSEED to SEED before running commands.  "
-             "Defaults to a random integer in the range 1 to 4294967295.  "
+             "Defaults to a random integer in the range [1, 4294967295] "
+             "([1, 1024] on Windows). "
              "Passing 'noset' suppresses this behavior.")
     parser.add_argument("--force-dep", action="append",
         metavar="REQ", default=None,
@@ -132,6 +130,8 @@ def prepare_parse(pkgname):
              "'pytest<2.7' or 'django>=1.6'.")
     parser.add_argument("--sitepackages", action="store_true",
         help="override sitepackages setting to True in all envs")
+    parser.add_argument("--skip-missing-interpreters", action="store_true",
+        help="don't fail tests for missing interpreters")
 
     parser.add_argument("args", nargs="*",
         help="additional arguments available to command positional substitution")
@@ -200,12 +200,15 @@ def get_homedir():
         return None
 
 def make_hashseed():
-    return str(random.randint(1, 4294967295))
+    max_seed = 4294967295
+    if sys.platform == 'win32' and sys.version_info < (3, 4):
+        max_seed = 1024
+    return str(random.randint(1, max_seed))
 
 class parseini:
     def __init__(self, config, inipath):
         config.toxinipath = inipath
-        config.toxinidir = toxinidir = config.toxinipath.dirpath()
+        config.toxinidir = config.toxinipath.dirpath()
 
         self._cfg = py.iniconfig.IniConfig(config.toxinipath)
         config._cfg = self._cfg
@@ -239,7 +242,7 @@ class parseini:
         # determine indexserver dictionary
         config.indexserver = {'default': IndexServerConfig('default')}
         prefix = "indexserver"
-        for line in reader.getlist(toxsection, "indexserver"):
+        for line in reader.getlist(toxsection, prefix):
             name, url = map(lambda x: x.strip(), line.split("=", 1))
             config.indexserver[name] = IndexServerConfig(name, url)
 
@@ -601,17 +604,25 @@ class IniReader:
         return x
 
     def _replace_env(self, match):
-        envkey = match.group('substitution_value')
-        if not envkey:
+        match_value = match.group('substitution_value')
+        if not match_value:
             raise tox.exception.ConfigError(
                 'env: requires an environment variable name')
 
-        if not envkey in os.environ:
+        default = None
+        envkey_split = match_value.split(':', 1)
+
+        if len(envkey_split) is 2:
+            envkey, default = envkey_split
+        else:
+            envkey = match_value
+
+        if not envkey in os.environ and default is None:
             raise tox.exception.ConfigError(
                 "substitution env:%r: unkown environment variable %r" %
                 (envkey, envkey))
 
-        return os.environ[envkey]
+        return os.environ.get(envkey, default)
 
     def _substitute_from_other_section(self, key):
         if key.startswith("[") and "]" in key:
@@ -739,3 +750,4 @@ def getcontextname():
     if 'HUDSON_URL' in os.environ:
         return 'jenkins'
     return None
+
