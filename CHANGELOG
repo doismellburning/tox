@@ -1,4 +1,11 @@
-development
+1.8.0.dev1
+-----------
+
+- new multi-dimensional configuration support.  Many thanks to
+  Alexander Schepanovski for the complete PR with docs.
+
+
+1.7.2
 -----------
 
 - fix issue150: parse {posargs} more like we used to do it pre 1.7.0.

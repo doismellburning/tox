@@ -16,7 +16,8 @@ import tox
 
 iswin32 = sys.platform == "win32"
 
-default_factors = {'jython': 'jython', 'pypy': 'pypy', 'py': sys.executable}
+default_factors = {'jython': 'jython', 'pypy': 'pypy', 'pypy3': 'pypy3',
+                   'py': sys.executable}
 for version in '24,25,26,27,30,31,32,33,34'.split(','):
     default_factors['py' + version] = 'python%s.%s' % tuple(version)
 
