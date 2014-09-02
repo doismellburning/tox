@@ -405,7 +405,7 @@ However, a better approach looks like this::
         pytest
         django15: Django>=1.5,<1.6
         django16: Django>=1.6,<1.7
-        !py27: unittest2
+        py26: unittest2
     commands = py.test
 
 This uses two new facilities of tox-1.8:
@@ -416,6 +416,7 @@ This uses two new facilities of tox-1.8:
 - "factor" specific settings
 
 Let's go through this step by step.
+
 
 Generative envlist
 +++++++++++++++++++++++
@@ -432,7 +433,7 @@ like this::
     py27-django15
     py27-django16
 
-You can still list environments explicitely along with generated ones::
+You can still list environments explicitly along with generated ones::
 
     envlist = {py26,py27}-django{15,16}, docs, flake
 
@@ -441,13 +442,13 @@ You can still list environments explicitely along with generated ones::
     To help with understanding how the variants will produce section values,
     you can ask tox to show their expansion with a new option::
 
-    $ tox -l
-    py26-django15
-    py26-django16
-    py27-django15
-    py27-django16
-    docs
-    flake
+        $ tox -l
+        py26-django15
+        py26-django16
+        py27-django15
+        py27-django16
+        docs
+        flake
 
 
 Factors and factor-conditional settings
@@ -471,29 +472,61 @@ optional lines with unconditional ones::
         pytest
         django15: Django>=1.5,<1.6
         django16: Django>=1.6,<1.7
-        !py27: unittest2
+        py26: unittest2
 
-The last line here uses negation of a factor, this means ``unittest2`` will be
-in ``deps`` for all pythons except python2.7. The whole effect of this setting
-definition could be described with a table:
+Reading it line by line:
 
-===============  ==================================
-environment                        deps
-===============  ==================================
-py26-django15    pytest, Django>=1.5,<1.6, unitest2
-py26-django16    pytest, Django>=1.6,<1.7, unitest2
-py27-django15    pytest, Django>=1.5,<1.6
-py27-django16    pytest, Django>=1.6,<1.7
-===============  ==================================
-
-And this table can significantly grow as you have more dependencies and other
-factors such as platform, python version and/or database.
+- ``pytest`` will be included unconditionally,
+- ``Django>=1.5,<1.6`` will be included for environments containing ``django15`` factor,
+- ``Django>=1.6,<1.7`` similarly depends on ``django16`` factor,
+- ``unittest`` will be loaded for Python 2.6 environments.
 
 .. note::
 
     Tox provides good defaults for basepython setting, so the above
     ini-file can be further reduced by omitting the ``basepython``
     setting.
+
+
+Complex factor conditions
++++++++++++++++++++++++++
+
+Sometimes you need to specify same line for several factors or create a special
+case for a combination of factors. Here is how you do it::
+
+    [tox]
+    envlist = py{26,27,33}-django{15,16}-{sqlite,mysql}
+
+    [testenv]
+    deps =
+        py33-mysql: PyMySQL     ; use if both py33 and mysql are in an env name
+        py26,py27: urllib3      ; use if any of py26 or py27 are in an env name
+        py{26,27}-sqlite: mock  ; mocking sqlite in python 2.x
+
+Take a look at first ``deps`` line. It shows how you can special case something
+for a combination of factors, you just join combining factors with a hyphen.
+This particular line states that ``PyMySQL`` will be loaded for python 3.3,
+mysql environments, e.g. ``py33-django15-mysql`` and ``py33-django16-mysql``.
+
+The second line shows how you use same line for several factors - by listing
+them delimited by commas. It's possible to list not only simple factors, but
+also their combinations like ``py26-sqlite,py27-sqlite``.
+
+Finally, factor expressions are expanded the same way as envlist, so last
+example could be rewritten as ``py{26,27}-sqlite``.
+
+.. note::
+
+    Factors don't do substring matching against env name, instead every
+    hyphenated expression is split by ``-`` and if ALL the factors in an
+    expression are also factors of an env then that condition is considered
+    hold.
+
+    For example, environment ``py26-mysql``:
+
+    - could be matched with expressions ``py26``, ``py26-mysql``,
+      ``mysql-py26``,
+    - but not with ``py2`` or ``py26-sql``.
 
 
 Other Rules and notes
