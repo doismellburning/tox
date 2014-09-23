@@ -485,9 +485,11 @@ class TestVenvTest:
         py.test.raises(ZeroDivisionError, "venv._pcall([1,2,3])")
         monkeypatch.setenv("PIP_RESPECT_VIRTUALENV", "1")
         monkeypatch.setenv("PIP_REQUIRE_VIRTUALENV", "1")
+        monkeypatch.setenv("__PYVENV_LAUNCHER__", "1")
         py.test.raises(ZeroDivisionError, "venv.run_install_command(['qwe'])")
         assert 'PIP_RESPECT_VIRTUALENV' not in os.environ
         assert 'PIP_REQUIRE_VIRTUALENV' not in os.environ
+        assert '__PYVENV_LAUNCHER__' not in os.environ
 
 def test_setenv_added_to_pcall(tmpdir, mocksession, newconfig):
     pkg = tmpdir.ensure("package.tar.gz")
@@ -552,8 +554,6 @@ def test_run_install_command(newmocksession):
     assert 'install' in l[0].args
     env = l[0].env
     assert env is not None
-    assert 'PYTHONIOENCODING' in env
-    assert env['PYTHONIOENCODING'] == 'utf_8'
 
 def test_run_custom_install_command(newmocksession):
     mocksession = newmocksession([], """

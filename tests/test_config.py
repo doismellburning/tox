@@ -832,6 +832,71 @@ class TestConfigTestEnv:
         assert conf.changedir.basename == 'testing'
         assert conf.changedir.dirpath().realpath() == tmpdir.realpath()
 
+    def test_factors(self, newconfig):
+        inisource="""
+            [tox]
+            envlist = a-x,b
+
+            [testenv]
+            deps=
+                dep-all
+                a: dep-a
+                b: dep-b
+                x: dep-x
+        """
+        conf = newconfig([], inisource)
+        configs = conf.envconfigs
+        assert [dep.name for dep in configs['a-x'].deps] == \
+            ["dep-all", "dep-a", "dep-x"]
+        assert [dep.name for dep in configs['b'].deps] == ["dep-all", "dep-b"]
+
+    def test_factor_ops(self, newconfig):
+        inisource="""
+            [tox]
+            envlist = {a,b}-{x,y}
+
+            [testenv]
+            deps=
+                a,b: dep-a-or-b
+                a-x: dep-a-and-x
+                {a,b}-y: dep-ab-and-y
+        """
+        configs = newconfig([], inisource).envconfigs
+        get_deps = lambda env: [dep.name for dep in configs[env].deps]
+        assert get_deps("a-x") == ["dep-a-or-b", "dep-a-and-x"]
+        assert get_deps("a-y") == ["dep-a-or-b", "dep-ab-and-y"]
+        assert get_deps("b-x") == ["dep-a-or-b"]
+        assert get_deps("b-y") == ["dep-a-or-b", "dep-ab-and-y"]
+
+    def test_default_factors(self, newconfig):
+        inisource="""
+            [tox]
+            envlist = py{26,27,33,34}-dep
+
+            [testenv]
+            deps=
+                dep: dep
+        """
+        conf = newconfig([], inisource)
+        configs = conf.envconfigs
+        for name, config in configs.items():
+            assert config.basepython == 'python%s.%s' % (name[2], name[3])
+
+    @pytest.mark.issue188
+    def test_factors_in_boolean(self, newconfig):
+        inisource="""
+            [tox]
+            envlist = py{27,33}
+
+            [testenv]
+            recreate =
+                py27: True
+        """
+        configs = newconfig([], inisource).envconfigs
+        assert configs["py27"].recreate
+        assert not configs["py33"].recreate
+
+
 class TestGlobalOptions:
     def test_notest(self, newconfig):
         config = newconfig([], "")
@@ -934,6 +999,23 @@ class TestGlobalOptions:
                 assert name.startswith("py")
                 bp = "python%s.%s" %(name[2], name[3])
                 assert env.basepython == bp
+
+    def test_envlist_expansion(self, newconfig):
+        inisource = """
+            [tox]
+            envlist = py{26,27},docs
+        """
+        config = newconfig([], inisource)
+        assert config.envlist == ["py26", "py27", "docs"]
+
+    def test_envlist_cross_product(self, newconfig):
+        inisource = """
+            [tox]
+            envlist = py{26,27}-dep{1,2}
+        """
+        config = newconfig([], inisource)
+        assert config.envlist == \
+            ["py26-dep1", "py26-dep2", "py27-dep1", "py27-dep2"]
 
     def test_minversion(self, tmpdir, newconfig, monkeypatch):
         inisource = """

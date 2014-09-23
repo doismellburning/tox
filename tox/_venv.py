@@ -1,5 +1,6 @@
 from __future__ import with_statement
 import sys, os
+import codecs
 import py
 import tox
 from tox._config import DepConfig
@@ -271,16 +272,19 @@ class VirtualEnv(object):
         if '{opts}' in argv:
             i = argv.index('{opts}')
             argv[i:i+1] = list(options)
-        for x in ('PIP_RESPECT_VIRTUALENV', 'PIP_REQUIRE_VIRTUALENV'):
+        for x in ('PIP_RESPECT_VIRTUALENV', 'PIP_REQUIRE_VIRTUALENV',
+                  '__PYVENV_LAUNCHER__'):
             try:
                 del os.environ[x]
             except KeyError:
                 pass
-        env = dict(PYTHONIOENCODING='utf_8')
-        if extraenv is not None:
-            env.update(extraenv)
+        old_stdout = sys.stdout
+        sys.stdout = codecs.getwriter('utf8')(sys.stdout)
+        if extraenv is None:
+            extraenv = {}
         self._pcall(argv, cwd=self.envconfig.config.toxinidir,
-                    extraenv=env, action=action)
+                    extraenv=extraenv, action=action)
+        sys.stdout = old_stdout
 
     def _install(self, deps, extraopts=None, action=None):
         if not deps:
