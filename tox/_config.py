@@ -308,7 +308,7 @@ class parseini:
         factors = set()
         if section in self._cfg:
             for _, value in self._cfg[section].items():
-                exprs = re.findall(r'^([\w{},-]+)\:\s+', value, re.M)
+                exprs = re.findall(r'^([\w{}\.,-]+)\:\s+', value, re.M)
                 factors.update(*mapcat(_split_factor_expr, exprs))
         return factors
 
@@ -489,8 +489,8 @@ class IndexServerConfig:
         self.url = url
 
 RE_ITEM_REF = re.compile(
-    '''
-    [{]
+    r'''
+    (?<!\\)[{]
     (?:(?P<sub_type>[^[:{}]+):)?    # optional sub_type for special rules
     (?P<substitution_value>[^{}]*)  # substitution key
     [}]
@@ -647,7 +647,7 @@ class IniReader:
 
     def _apply_factors(self, s):
         def factor_line(line):
-            m = re.search(r'^([\w{},-]+)\:\s+(.+)', line)
+            m = re.search(r'^([\w{}\.,-]+)\:\s+(.+)', line)
             if not m:
                 return line
 
@@ -757,7 +757,7 @@ class CommandParser(object):
         def word_has_ended():
             return ((cur_char in string.whitespace and ps.word and
                ps.word[-1] not in string.whitespace) or
-              (cur_char == '{' and ps.depth == 0) or
+              (cur_char == '{' and ps.depth == 0 and not ps.word.endswith('\\')) or
               (ps.depth == 0 and ps.word and ps.word[-1] == '}') or
               (cur_char not in string.whitespace and ps.word and
                ps.word.strip() == ''))

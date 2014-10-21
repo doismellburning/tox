@@ -725,6 +725,23 @@ class TestConfigTestEnv:
         assert argv[0] == ["cmd1", "[hello]", "world"]
         assert argv[1] == ["cmd1", "brave", "new", "world"]
 
+    def test_posargs_backslashed_or_quoted(self, tmpdir, newconfig):
+        inisource = """
+            [testenv:py24]
+            commands =
+                echo "\{posargs\}" = {posargs}
+                echo "posargs = " "{posargs}"
+        """
+        conf = newconfig([], inisource).envconfigs['py24']
+        argv = conf.commands
+        assert argv[0] == ['echo', '\\{posargs\\}', '=']
+        assert argv[1] == ['echo', 'posargs =']
+
+        conf = newconfig(['dog', 'cat'], inisource).envconfigs['py24']
+        argv = conf.commands
+        assert argv[0] == ['echo', '\\{posargs\\}', '=', 'dog', 'cat']
+        assert argv[1] == ['echo', 'posargs =', 'dog', 'cat']
+
     def test_rewrite_posargs(self, tmpdir, newconfig):
         inisource = """
             [testenv:py24]
@@ -928,6 +945,21 @@ class TestConfigTestEnv:
         configs = newconfig([], inisource).envconfigs
         assert configs["py27"].setenv["X"] == "1"
         assert "X" not in configs["py26"].setenv
+
+    def test_period_in_factor(self, newconfig):
+        inisource="""
+            [tox]
+            envlist = py27-{django1.6,django1.7}
+
+            [testenv]
+            deps =
+                django1.6: Django==1.6
+                django1.7: Django==1.7
+        """
+        configs = newconfig([], inisource).envconfigs
+        assert sorted(configs) == ["py27-django1.6", "py27-django1.7"]
+        assert [d.name for d in configs["py27-django1.6"].deps] \
+            == ["Django==1.6"]
 
 
 class TestGlobalOptions:
