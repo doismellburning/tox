@@ -7,6 +7,8 @@ env:
   - TOX_ENV=py32
   - TOX_ENV=pypy
   - TOX_ENV=flakes
+install:
+  - pip install tox
 script:
   tox -e $TOX_ENV
 matrix:
